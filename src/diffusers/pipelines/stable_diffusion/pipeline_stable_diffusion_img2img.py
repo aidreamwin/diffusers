@@ -435,6 +435,23 @@ class StableDiffusionImg2ImgPipeline(DiffusionPipeline):
 
         return latents
 
+    def prepare_latents_no_image(self, batch_size, num_channels_latents, height, width, dtype, device, generator, latents=None):
+        shape = (batch_size, num_channels_latents, height // 8, width // 8)
+        if latents is None:
+            if device.type == "mps":
+                # randn does not work reproducibly on mps
+                latents = torch.randn(shape, generator=generator, device="cpu", dtype=dtype).to(device)
+            else:
+                latents = torch.randn(shape, generator=generator, device=device, dtype=dtype)
+        else:
+            if latents.shape != shape:
+                raise ValueError(f"Unexpected latents shape, got {latents.shape}, expected {shape}")
+            latents = latents.to(device)
+
+        # scale the initial noise by the standard deviation required by the scheduler
+        latents = latents * self.scheduler.init_noise_sigma
+        return latents
+
     @torch.no_grad()
     def __call__(
         self,
@@ -451,6 +468,9 @@ class StableDiffusionImg2ImgPipeline(DiffusionPipeline):
         return_dict: bool = True,
         callback: Optional[Callable[[int, int, torch.FloatTensor], None]] = None,
         callback_steps: Optional[int] = 1,
+        height: int = 512,
+        width: int = 512,
+        latents: Optional[torch.FloatTensor] = None,
         **kwargs,
     ):
         r"""
@@ -525,7 +545,7 @@ class StableDiffusionImg2ImgPipeline(DiffusionPipeline):
         )
 
         # 4. Preprocess image
-        if isinstance(init_image, PIL.Image.Image):
+        if init_image and isinstance(init_image, PIL.Image.Image):
             init_image = preprocess(init_image)
 
         # 5. set timesteps
@@ -534,9 +554,21 @@ class StableDiffusionImg2ImgPipeline(DiffusionPipeline):
         latent_timestep = timesteps[:1].repeat(batch_size * num_images_per_prompt)
 
         # 6. Prepare latent variables
-        latents = self.prepare_latents(
-            init_image, latent_timestep, batch_size, num_images_per_prompt, text_embeddings.dtype, device, generator
-        )
+        if init_image == None:
+            num_channels_latents = self.unet.in_channels
+            latents = self.prepare_latents_no_image(
+                batch_size*num_images_per_prompt,
+                num_channels_latents,
+                height,
+                width,
+                text_embeddings.dtype,
+                device,
+                generator,
+                )
+        else:
+            latents = self.prepare_latents(
+                init_image, latent_timestep, batch_size, num_images_per_prompt, text_embeddings.dtype, device, generator
+            )
 
         # 7. Prepare extra step kwargs. TODO: Logic should ideally just be moved out of the pipeline
         extra_step_kwargs = self.prepare_extra_step_kwargs(generator, eta)
