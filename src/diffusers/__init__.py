@@ -9,7 +9,7 @@ from .utils import (
 )
 
 
-__version__ = "0.8.0.9f476_dyb"
+__version__ = "0.8.0.9f476_dyb.3"
 
 from .configuration_utils import ConfigMixin
 from .onnx_utils import OnnxRuntimeModel

@@ -471,6 +471,7 @@ class StableDiffusionImg2ImgPipeline(DiffusionPipeline):
         height: int = 512,
         width: int = 512,
         latents: Optional[torch.FloatTensor] = None,
+        safety_check: bool = True,
         **kwargs,
     ):
         r"""
@@ -598,7 +599,9 @@ class StableDiffusionImg2ImgPipeline(DiffusionPipeline):
         image = self.decode_latents(latents)
 
         # 10. Run safety checker
-        image, has_nsfw_concept = self.run_safety_checker(image, device, text_embeddings.dtype)
+        has_nsfw_concept = None
+        if safety_check:
+            image, has_nsfw_concept = self.run_safety_checker(image, device, text_embeddings.dtype)
 
         # 11. Convert to PIL
         if output_type == "pil":
